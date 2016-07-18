@@ -15,7 +15,7 @@
 package mqtt
 
 import (
-	"github.com/net/websocket"
+	"github.com/golang/net/websocket"
 	"crypto/tls"
 	"io"
 	"net"
