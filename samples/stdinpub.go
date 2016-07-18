@@ -21,7 +21,7 @@ import (
 	"os"
 	"strings"
 	"log"
-	MQTT "github.com/yunba/mqtt.go"
+	MQTT "github.com/shdxiang/mqtt.go"
 	"flag"
 	"time"
 	"strconv"
@@ -65,22 +65,24 @@ func main() {
 	fmt.Println("DeviceId", regInfo.DeviceId)
 	fmt.Println("")
 
-	urlInfo, err := yunbaClient.GetHost()
-	if err != nil {
-		log.Fatal(err)
-	}
-	if regInfo.ErrCode != 0 {
-		log.Fatal("reg has error:", urlInfo.ErrCode)
-	}
+//	urlInfo, err := yunbaClient.GetHost()
+//	if err != nil {
+//		log.Fatal(err)
+//	}
+//	if regInfo.ErrCode != 0 {
+//		log.Fatal("reg has error:", urlInfo.ErrCode)
+//	}
+//
+//
+//	fmt.Printf("URL:\t\t%+v\n", urlInfo)
+//	fmt.Println("url", urlInfo.Client)
+//	fmt.Println("")
 
-
-	fmt.Printf("URL:\t\t%+v\n", urlInfo)
-	fmt.Println("url", urlInfo.Client)
-	fmt.Println("")
+	broker := "tcp://123.56.125.40:1883"
 
 
 	connOpts := MQTT.NewClientOptions()
-	connOpts.AddBroker(urlInfo.Client)
+	connOpts.AddBroker(broker)
 	connOpts.SetClientId(regInfo.Client)
 	connOpts.SetCleanSession(true)
 	connOpts.SetProtocolVersion(0x13)
@@ -95,7 +97,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	} else {
-		log.Printf("Connected to %s\n", urlInfo.Client)
+		log.Printf("Connected to %s\n", broker)
 	}
 
 	for {

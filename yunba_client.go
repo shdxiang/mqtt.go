@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	yunba_REG_URL  = "http://reg.yunba.io:8383/device/reg/"
-	yunba_TICK_URL = "http://tick.yunba.io:9999/"
+	yunba_REG_URL  = "http://182.92.105.230:8383/device/reg/"
+	yunba_TICK_URL = "http://123.57.32.238:9999/"
 )
 
 // 服务器返回信息
