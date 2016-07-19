@@ -102,6 +102,8 @@ func main() {
 	for i := 0; i < *routineNum; i++ {
 		wgSub.Add(1)
 		go doWork(i, appkey, topic, *qos, message, *ecahPubCnt, *interval)
+		log.Printf("======Add: %d\n", i)
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	msgNeedRecv := (*routineNum * *ecahPubCnt * *routineNum)
