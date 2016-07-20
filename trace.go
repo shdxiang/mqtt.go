@@ -27,8 +27,13 @@ var (
 )
 
 func init() {
-	ERROR = log.New(os.Stderr, "", 0)
-	CRITICAL = log.New(os.Stderr, "", 0)
-	WARN = log.New(os.Stdout, "", 0)
-	DEBUG = log.New(os.Stdout, "", 0)
+	nolog, err := os.Open("/dev/null")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ERROR = log.New(nolog, "", 0)
+	CRITICAL = log.New(nolog, "", 0)
+	WARN = log.New(nolog, "", 0)
+	DEBUG = log.New(nolog, "", 0)
 }

@@ -26,7 +26,12 @@ func defaultPublishHandler(client *MQTT.MqttClient, msg MQTT.Message) {
 
 func onMessageReceived(client *MQTT.MqttClient, message MQTT.Message) {
 	log.Printf("Received message on topic: %s\n", message.Topic())
-	log.Printf("Message: %s\n", message.Payload())
+	data := message.Payload()
+	l := len(data)
+	if l > 8 {
+		l = 8;
+	}
+	log.Printf("Message: %s\n", data[:l])
 	msgRecv++
 }
 
@@ -103,7 +108,6 @@ func doWork(index int, clientid *string, user *string, pass *string, broker *str
 }
 
 func main() {
-	log.SetPrefix("++++++")
 	appkey := flag.String("appkey", "563c4afef085fc471efdf803", "YunBa appkey")
 	topic := flag.String("topic", "topic_test", "Topic to publish the messages on")
 	message := flag.String("message", "hello", "Message to be published")
@@ -164,5 +168,6 @@ func main() {
 		}
 		wgRecv.Done()
 		wgWork.Wait()
+		log.Printf("msgRecv: %d\n", msgRecv)
 	}
 }
