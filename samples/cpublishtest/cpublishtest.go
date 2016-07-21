@@ -24,6 +24,16 @@ var wgWork sync.WaitGroup
 var pubTimes [][]int64 // ns
 var usedTimes [][]int64 // ms
 
+var minTime int64 =  math.MaxInt64
+var maxTime int64 =  math.MinInt64
+var lockTime sync.Mutex
+
+var beginTime int64 =  0
+var endTime int64 =  0
+var beginTimeSet bool = false
+var lockTime2 sync.Mutex
+
+
 func defaultPublishHandler(client *MQTT.MqttClient, msg MQTT.Message) {
 	log.Printf("TOPIC: %s\n", msg.Topic())
 	log.Printf("MSG: %s\n", msg.Payload())
@@ -36,7 +46,21 @@ func onMessageReceived(client *MQTT.MqttClient, message MQTT.Message) {
 	i := binary.LittleEndian.Uint32(data)
 	j := binary.LittleEndian.Uint32(data[4:])
 
-	usedTimes[i][j] += (ns - pubTimes[i][j]) / 1000000;
+	ms := (ns - pubTimes[i][j]) / 1000000
+	usedTimes[i][j] += ms
+
+	lockTime.Lock()
+	if minTime > ms {
+		minTime = ms
+	}
+	if maxTime < ms {
+		maxTime = ms
+	}
+	lockTime.Unlock()
+
+	lockTime2.Lock()
+	endTime = time.Now().UnixNano() / 1000000
+	lockTime2.Unlock()
 
 	// log.Printf("recv msg len: %d", len(data))
 
@@ -113,6 +137,15 @@ func doWork(index int, clientid *string, user *string, pass *string, broker *str
 	time.Sleep(2 * time.Second)
 	
 	if doPub {
+		if !beginTimeSet {
+			lockTime2.Lock()
+			if !beginTimeSet {
+				beginTimeSet = true
+				beginTime = time.Now().UnixNano() / 1000000
+			}
+			lockTime2.Unlock()
+		}
+
 		for i := 0; i < pubEach; i++ {
 			binary.LittleEndian.PutUint32(msg[4:], uint32(i))
 			pubTimes[index][i] = time.Now().UnixNano()
@@ -136,8 +169,8 @@ func main() {
 	qos := flag.Int("qos", 0, "The QoS to send the messages at")
 	broker := flag.String("broker", "tcp://123.56.125.40:1883", "Broker address, default: tcp://123.56.125.40:1883")
 
-	client := flag.Int("client", 1, "Number of clients")
-	pubClient := flag.Int("pubclient", 1, "Number of client who do publish")
+	client := flag.Int("client", 1, "Number of clients for registration and subscription")
+	pubClient := flag.Int("pubclient", 1, "Number of client for publishing")
 	pubEach := flag.Int("pubeach", 1, "How many publish one client do")
 	interval := flag.Int("interval", 1000, "Interval of publishes(when [pubeach] > 1), millisecond")
 
@@ -180,17 +213,20 @@ func main() {
 		fileScanner := bufio.NewScanner(regFile)
 
 		wgRecv.Add(1)
-		cnt := 0
+		subClient := 0
 		for fileScanner.Scan() {
 			regInfo := strings.Split(fileScanner.Text(), "|")
 			wgSub.Add(1)
 			wgWork.Add(1)
-			go doWork(cnt, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, cnt < *pubClient)
+			go doWork(subClient, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, subClient < *pubClient)
 			time.Sleep(10 * time.Millisecond)
-			cnt++
+			subClient++
+			if subClient >= *client {
+				break
+			}
 		}
 
-		msgNeedRecv := (*pubClient * *pubEach * cnt)
+		msgNeedRecv := (*pubClient * *pubEach * subClient)
 
 		for {
 			time.Sleep(2 * time.Second)
@@ -206,24 +242,16 @@ func main() {
 
 		pubTotal := *pubEach * *pubClient
 
-		minTime := int64(math.MaxInt64)
-		maxTime := int64(math.MinInt64)
 		totalTime := int64(0)
 
 		for _, usedTime := range usedTimes {
 			for _, ms := range usedTime {
-				log.Printf("ms: %d\n", ms)
-				if minTime > ms {
-					minTime = ms
-				}
-				if maxTime < ms {
-					maxTime = ms
-				}
 				totalTime += ms
 			}
 		}
 		log.Printf("\n")
-		log.Printf("Published: %d, Received: %d", pubTotal, msgRecv)
-		log.Printf("Total: %d ms, Max: %d ms, Min: %d, Avg: %d ms\n", totalTime, maxTime, minTime, totalTime / int64(pubTotal))
+		log.Printf("Pub: %d, Sub: %d, Received: %d", pubTotal, subClient, msgRecv)
+		log.Printf("Serial: %d ms, Parallel: %d ms, Max: %d ms, Min: %d ms, Avg: %d ms\n", totalTime, endTime - beginTime, maxTime, minTime, totalTime / int64(subClient * *pubEach))
+		log.Printf("\n")
 	}
 }
