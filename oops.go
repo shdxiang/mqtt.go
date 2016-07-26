@@ -46,7 +46,7 @@ var ErrInvalidQoS = errors.New("Invalid QoS")
 
 func DefaultErrorHandler(client *MqttClient, reason error) {
 	fmt.Fprintf(os.Stderr, "%s go-mqtt suffered fatal error %v", ERR, reason)
-	os.Exit(1)
+	// os.Exit(1)
 }
 
 func chkerr(e error) {

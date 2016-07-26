@@ -33,7 +33,6 @@ var endTime int64 =  0
 var beginTimeSet bool = false
 var lockTime2 sync.Mutex
 
-
 func defaultPublishHandler(client *MQTT.MqttClient, msg MQTT.Message) {
 	log.Printf("TOPIC: %s\n", msg.Topic())
 	log.Printf("MSG: %s\n", msg.Payload())
@@ -42,6 +41,8 @@ func defaultPublishHandler(client *MQTT.MqttClient, msg MQTT.Message) {
 func onMessageReceived(client *MQTT.MqttClient, message MQTT.Message) {
 	ns := time.Now().UnixNano()
 	data := message.Payload()
+
+	// log.Printf("recv msg len: %d", len(data))
 
 	i := binary.LittleEndian.Uint32(data)
 	j := binary.LittleEndian.Uint32(data[4:])
@@ -111,6 +112,7 @@ func doWork(index int, clientid *string, user *string, pass *string, broker *str
 	connOpts.SetPassword(*pass)
 
 	connOpts.SetDefaultPublishHandler(defaultPublishHandler)
+	connOpts.SetKeepAlive(300)
 
 	client := MQTT.NewClient(connOpts)
 	_, err := client.Start()
@@ -131,6 +133,8 @@ func doWork(index int, clientid *string, user *string, pass *string, broker *str
 	msg := make([]byte, msgLen)
 	binary.LittleEndian.PutUint32(msg, uint32(index))
 
+	// log.Printf("Subscrbed\n")
+
 	wgSub.Done()
 	wgSub.Wait()
 
@@ -150,7 +154,7 @@ func doWork(index int, clientid *string, user *string, pass *string, broker *str
 			binary.LittleEndian.PutUint32(msg[4:], uint32(i))
 			pubTimes[index][i] = time.Now().UnixNano()
 			<- client.Publish(MQTT.QoS(qos), *topic, msg)
-			// log.Printf("Published\n")
+			log.Printf("Published\n")
 			time.Sleep(time.Duration(interval) * time.Millisecond)
 		}
 	}
@@ -158,7 +162,7 @@ func doWork(index int, clientid *string, user *string, pass *string, broker *str
 	wgRecv.Wait()
 
 	// unsub
-	client.EndSubscription(*topic)
+//	client.EndSubscription(*topic)
 	wgWork.Done()
 }
 
@@ -212,16 +216,24 @@ func main() {
 		defer regFile.Close()
 		fileScanner := bufio.NewScanner(regFile)
 
-		wgRecv.Add(1)
 		subClient := 0
 		for fileScanner.Scan() {
-			regInfo := strings.Split(fileScanner.Text(), "|")
-			wgSub.Add(1)
-			wgWork.Add(1)
-			go doWork(subClient, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, subClient < *pubClient)
-			time.Sleep(10 * time.Millisecond)
 			subClient++
 			if subClient >= *client {
+				break
+			}
+		}
+
+		wgRecv.Add(1)
+		wgSub.Add(subClient)
+		wgWork.Add(subClient)
+		index := 0
+		for fileScanner.Scan() {
+			regInfo := strings.Split(fileScanner.Text(), "|")
+			go doWork(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, index < *pubClient)
+			time.Sleep(100 * time.Millisecond)
+			index++
+			if index >= *client {
 				break
 			}
 		}
@@ -251,7 +263,8 @@ func main() {
 		}
 		log.Printf("\n")
 		log.Printf("Pub: %d, Sub: %d, Received: %d", pubTotal, subClient, msgRecv)
-		log.Printf("Serial: %d ms, Parallel: %d ms, Max: %d ms, Min: %d ms, Avg: %d ms\n", totalTime, endTime - beginTime, maxTime, minTime, totalTime / int64(subClient * *pubEach))
+		log.Printf("Serial: %d ms, Parallel: %d ms, Max: %d ms, Min: %d ms, Avg: %d ms\n", totalTime, endTime - beginTime, maxTime, minTime, totalTime / int64(subClient * *pubEach * *pubClient))
+		log.Printf("%d/%d/%d\n", maxTime, minTime, totalTime / int64(subClient * *pubEach * *pubClient))
 		log.Printf("\n")
 	}
 }
