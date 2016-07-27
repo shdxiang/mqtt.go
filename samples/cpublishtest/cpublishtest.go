@@ -19,7 +19,7 @@ var msgRecv int = 0
 var wgReg sync.WaitGroup
 var wgSub sync.WaitGroup
 var wgRecv sync.WaitGroup
-var wgWork sync.WaitGroup
+// var wgWork sync.WaitGroup
 
 var pubTimes [][]int64 // ns
 var usedTimes [][]int64 // ms
@@ -42,7 +42,7 @@ func onMessageReceived(client *MQTT.MqttClient, message MQTT.Message) {
 	ns := time.Now().UnixNano()
 	data := message.Payload()
 
-	// log.Printf("recv msg len: %d", len(data))
+	log.Printf("recv msg len: %d", len(data))
 
 	i := binary.LittleEndian.Uint32(data)
 	j := binary.LittleEndian.Uint32(data[4:])
@@ -112,7 +112,7 @@ func doWork(index int, clientid *string, user *string, pass *string, broker *str
 	connOpts.SetPassword(*pass)
 
 	connOpts.SetDefaultPublishHandler(defaultPublishHandler)
-	connOpts.SetKeepAlive(300)
+	// connOpts.SetKeepAlive(300)
 
 	client := MQTT.NewClient(connOpts)
 	_, err := client.Start()
@@ -163,7 +163,7 @@ func doWork(index int, clientid *string, user *string, pass *string, broker *str
 
 	// unsub
 //	client.EndSubscription(*topic)
-	wgWork.Done()
+	// wgWork.Done()
 }
 
 func main() {
@@ -216,26 +216,23 @@ func main() {
 		defer regFile.Close()
 		fileScanner := bufio.NewScanner(regFile)
 
-		subClient := 0
-		for fileScanner.Scan() {
-			subClient++
-			if subClient >= *client {
-				break
-			}
-		}
-
 		wgRecv.Add(1)
-		wgSub.Add(subClient)
-		wgWork.Add(subClient)
+		wgSub.Add(*client)
+		// wgWork.Add(subClient)
 		index := 0
 		for fileScanner.Scan() {
+			// log.Printf("add: %s\n", fileScanner.Text())
 			regInfo := strings.Split(fileScanner.Text(), "|")
 			go doWork(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, index < *pubClient)
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 			index++
 			if index >= *client {
 				break
 			}
+		}
+		subClient := index
+		for ; index < *client; index++ {
+			wgSub.Done()
 		}
 
 		msgNeedRecv := (*pubClient * *pubEach * subClient)
@@ -248,7 +245,7 @@ func main() {
 			}
 		}
 		wgRecv.Done()
-		wgWork.Wait()
+		// wgWork.Wait()
 		// dur := lastRecv.Sub(beginPub)
 		// mill := int64(dur / 1000000)
 
