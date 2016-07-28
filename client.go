@@ -246,7 +246,7 @@ func (c *MqttClient) Presence(callback MessageHandler, topic string) (<-chan Rec
     if err != nil {
         return nil, err
     }
-    return c.StartSubscription(callback, filter)
+    return c.StartSubscription(callback, c.options.subackCallback, filter)
 }
 
 // YunBa API presence
@@ -376,7 +376,7 @@ func (c *MqttClient) PublishMessage(topic string, message *Message) <-chan Recei
 
 // Start a new subscription. Provide a MessageHandler to be executed when
 // a message is published on one of the topics provided.
-func (c *MqttClient) StartSubscription(callback MessageHandler, filters ...*TopicFilter) (<-chan Receipt, error) {
+func (c *MqttClient) StartSubscription(callback MessageHandler, subackCallback SubackHandler, filters ...*TopicFilter) (<-chan Receipt, error) {
 	if !c.IsConnected() {
 		return nil, ErrNotConnected
 	}
@@ -393,6 +393,7 @@ func (c *MqttClient) StartSubscription(callback MessageHandler, filters ...*Topi
 	r := make(chan Receipt, 1)
 
 	c.obound <- sendable{submsg, r}
+	c.options.subackCallback = subackCallback
 
 	DEBUG.Println(CLI, "exit StartSubscription")
 	return r, nil

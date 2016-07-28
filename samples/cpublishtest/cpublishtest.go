@@ -12,37 +12,48 @@ import (
 	"strings"
 	"encoding/binary"
 	MQTT "github.com/shdxiang/mqtt.go"
+	"os/signal"
 )
 
 var msgSent int = 0
 var msgRecv int = 0
 var wgReg sync.WaitGroup
 var wgSub sync.WaitGroup
-var wgRecv sync.WaitGroup
-// var wgWork sync.WaitGroup
+//var wgRecv sync.WaitGroup
+//var wgWork sync.WaitGroup
 
 var pubTimes [][]int64 // ns
 var usedTimes [][]int64 // ms
 
-var minTime int64 =  math.MaxInt64
-var maxTime int64 =  math.MinInt64
+var minTime int64 = math.MaxInt64
+var maxTime int64 = math.MinInt64
 var lockTime sync.Mutex
 
-var beginTime int64 =  0
-var endTime int64 =  0
+var beginTime int64 = 0
+var endTime int64 = 0
 var beginTimeSet bool = false
 var lockTime2 sync.Mutex
+var pubStarted bool = false
+var connectedCnt int = 0
+var subacked int = 0
+
+func onSuback() {
+	subacked++
+}
 
 func defaultPublishHandler(client *MQTT.MqttClient, msg MQTT.Message) {
-	log.Printf("TOPIC: %s\n", msg.Topic())
-	log.Printf("MSG: %s\n", msg.Payload())
+	log.Printf("topic: %s\n", msg.Topic())
+	log.Printf("msg: %s\n", msg.Payload())
 }
 
 func onMessageReceived(client *MQTT.MqttClient, message MQTT.Message) {
+	if !pubStarted {
+		return
+	}
 	ns := time.Now().UnixNano()
 	data := message.Payload()
 
-	log.Printf("recv msg len: %d", len(data))
+	//log.Printf("recv msg len: %d", len(data))
 
 	i := binary.LittleEndian.Uint32(data)
 	j := binary.LittleEndian.Uint32(data[4:])
@@ -71,7 +82,7 @@ func onMessageReceived(client *MQTT.MqttClient, message MQTT.Message) {
 	// if l > 8 {
 	// 	l = 8;
 	// }
-	// log.Printf("Message: %s\n", data[:l])
+	// log.Printf("message: %s\n", data[:l])
 	msgRecv++
 }
 
@@ -92,12 +103,12 @@ func doReg(index int, regFile *os.File, appkey *string, topic *string, qos int, 
 
 	log.Printf("line: %s\n", line)
 	writer := bufio.NewWriter(regFile)
-    _, err = writer.WriteString(line + "\n")
-    if err != nil {
-    	log.Fatal(err)
-    }
+	_, err = writer.WriteString(line + "\n")
+	if err != nil {
+		log.Fatal(err)
+	}
 
-    writer.Flush()
+	writer.Flush()
 	wgReg.Done()
 }
 
@@ -119,7 +130,7 @@ func doWork(index int, clientid *string, user *string, pass *string, broker *str
 	if err != nil {
 		panic(err)
 	} else {
-		log.Printf("Connected to %s\n", *broker)
+		connectedCnt++
 	}
 
 	filter, err := MQTT.NewTopicFilter(*topic, byte(qos))
@@ -128,18 +139,16 @@ func doWork(index int, clientid *string, user *string, pass *string, broker *str
 	}
 
 	// sub
-	client.StartSubscription(onMessageReceived, filter)
+	client.StartSubscription(onMessageReceived, onSuback, filter)
 
 	msg := make([]byte, msgLen)
 	binary.LittleEndian.PutUint32(msg, uint32(index))
 
-	// log.Printf("Subscrbed\n")
-
-	wgSub.Done()
 	wgSub.Wait()
 
 	time.Sleep(2 * time.Second)
-	
+	pubStarted = true
+
 	if doPub {
 		if !beginTimeSet {
 			lockTime2.Lock()
@@ -153,16 +162,16 @@ func doWork(index int, clientid *string, user *string, pass *string, broker *str
 		for i := 0; i < pubEach; i++ {
 			binary.LittleEndian.PutUint32(msg[4:], uint32(i))
 			pubTimes[index][i] = time.Now().UnixNano()
-			<- client.Publish(MQTT.QoS(qos), *topic, msg)
-			log.Printf("Published\n")
+			<-client.Publish(MQTT.QoS(qos), *topic, msg)
+			log.Printf("published\n")
 			time.Sleep(time.Duration(interval) * time.Millisecond)
 		}
 	}
 
-	wgRecv.Wait()
+	//wgRecv.Wait()
 
 	// unsub
-//	client.EndSubscription(*topic)
+	//	client.EndSubscription(*topic)
 	// wgWork.Done()
 }
 
@@ -216,12 +225,12 @@ func main() {
 		defer regFile.Close()
 		fileScanner := bufio.NewScanner(regFile)
 
-		wgRecv.Add(1)
-		wgSub.Add(*client)
+		//wgRecv.Add(1)
+		wgSub.Add(1)
 		// wgWork.Add(subClient)
 		index := 0
 		for fileScanner.Scan() {
-			// log.Printf("add: %s\n", fileScanner.Text())
+			log.Printf("add: %s\n", fileScanner.Text())
 			regInfo := strings.Split(fileScanner.Text(), "|")
 			go doWork(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, index < *pubClient)
 			time.Sleep(10 * time.Millisecond)
@@ -231,25 +240,50 @@ func main() {
 			}
 		}
 		subClient := index
-		for ; index < *client; index++ {
-			wgSub.Done()
-		}
 
-		msgNeedRecv := (*pubClient * *pubEach * subClient)
+		stop := false
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt)
+		go func() {
+			<-c
+			stop = true
+		}()
 
+		// wait connecet
 		for {
-			time.Sleep(2 * time.Second)
-			log.Printf("msgRecv: %d\n", msgRecv)
-			if msgRecv == msgNeedRecv {
+			log.Printf("connected: %d\n", connectedCnt)
+			if stop || connectedCnt == subClient {
 				break
 			}
+			time.Sleep(1 * time.Second)
 		}
-		wgRecv.Done()
-		// wgWork.Wait()
-		// dur := lastRecv.Sub(beginPub)
-		// mill := int64(dur / 1000000)
+
+		// wait sub
+		for {
+			log.Printf("subacked: %d\n", subacked)
+			if stop || subacked == subClient {
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+		wgSub.Done()
 
 		pubTotal := *pubEach * *pubClient
+		// wait message
+		for {
+			log.Printf("received: %d\n", msgRecv)
+			if stop || msgRecv == (pubTotal * subClient) {
+				break
+			}
+			time.Sleep(1 * time.Second)
+		}
+
+		if msgRecv == 0 {
+			log.Printf("\n")
+			log.Printf("incompleted test\n")
+			log.Printf("\n")
+			return
+		}
 
 		totalTime := int64(0)
 
@@ -259,8 +293,8 @@ func main() {
 			}
 		}
 		log.Printf("\n")
-		log.Printf("Pub: %d, Sub: %d, Received: %d", pubTotal, subClient, msgRecv)
-		log.Printf("Serial: %d ms, Parallel: %d ms, Max: %d ms, Min: %d ms, Avg: %d ms\n", totalTime, endTime - beginTime, maxTime, minTime, totalTime / int64(subClient * *pubEach * *pubClient))
+		log.Printf("pub: %d, sub: %d, received: %d, lost: %d", pubTotal, subClient, msgRecv, pubTotal * subClient - msgRecv)
+		log.Printf("serial: %d ms, parallel: %d ms, max: %d ms, min: %d ms, avg: %d ms\n", totalTime, endTime - beginTime, maxTime, minTime, totalTime / int64(subClient * *pubEach * *pubClient))
 		log.Printf("%d/%d/%d\n", maxTime, minTime, totalTime / int64(subClient * *pubEach * *pubClient))
 		log.Printf("\n")
 	}

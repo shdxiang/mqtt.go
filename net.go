@@ -21,6 +21,7 @@ import (
 	"net"
 	"net/url"
 	"time"
+	"log"
 )
 
 func openConnection(uri *url.URL, tlsc *tls.Config) (conn net.Conn, err error) {
@@ -199,6 +200,9 @@ func outgoing(c *MqttClient) {
 // store messages if necessary
 // send replies on obound
 // delete messages from store if necessary
+//var publishCnt int = 0
+var pubackCnt int = 0
+
 func alllogic(c *MqttClient) {
 
 	DEBUG.Println(NET, "logic started")
@@ -215,6 +219,7 @@ func alllogic(c *MqttClient) {
 				DEBUG.Println(NET, "received pingresp")
 				c.pingOutstanding = false
 			case SUBACK:
+				c.options.subackCallback()
 				DEBUG.Println(NET, "received suback, id:", msg.MsgId())
 				c.receipts.get(msg.MsgId()) <- Receipt{}
 				c.receipts.end(msg.MsgId())
@@ -227,6 +232,8 @@ func alllogic(c *MqttClient) {
 				c.receipts.end(msg.MsgId())
 				go c.options.mids.freeId(msg.MsgId())
 			case PUBLISH:
+				//publishCnt++
+				//log.Printf("PUBLISH: %d\n", publishCnt)
 				DEBUG.Println(NET, "received publish, msgId:", msg.MsgId())
 				DEBUG.Println(NET, "putting msg on onPubChan")
 				switch msg.QoS() {
@@ -274,6 +281,8 @@ func alllogic(c *MqttClient) {
 					}
 				}
 			case PUBACK:
+				pubackCnt++
+				log.Printf("PUBACK: %d\n", pubackCnt)
 				DEBUG.Println(NET, "received puback, id:", msg.MsgId())
 				c.receipts.get(msg.MsgId()) <- Receipt{}
 				c.receipts.end(msg.MsgId())

@@ -25,6 +25,8 @@ import (
 // to which the client is subscribed.
 type MessageHandler func(client *MqttClient, message Message)
 
+type SubackHandler func()
+
 // OnConnectionLost is a callback type which can be set to be
 // executed upon an unintended disconnection from the MQTT broker.
 // Disconnects caused by calling Disconnect or ForceDisconnect will
@@ -55,6 +57,7 @@ type ClientOptions struct {
 	mids            messageIds
 	writeTimeout    time.Duration
 	protocolVersion byte
+	subackCallback  SubackHandler
 }
 
 // NewClientClientOptions will create a new ClientClientOptions type with some
