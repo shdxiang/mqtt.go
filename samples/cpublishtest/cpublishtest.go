@@ -146,7 +146,7 @@ func doWork(index int, clientid *string, user *string, pass *string, broker *str
 
 	wgSub.Wait()
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(5 * time.Second)
 	pubStarted = true
 
 	if doPub {
@@ -275,16 +275,18 @@ func main() {
 		pubTotal := *pubEach * *pubClient
 		msgTotal := pubTotal * subClient
 		// wait message
-		waitCnt = msgTotal / 10
+		waitCnt = 10 + pubTotal / 10
 		for {
 			time.Sleep(1 * time.Second)
 			if pubStarted {
-
 				log.Printf("received: %d\n", msgRecv)
+			} else {
+				continue
 			}
-			if stop || msgRecv == msgTotal {
+			if stop || msgRecv == msgTotal || waitCnt == 0 {
 				break
 			}
+			waitCnt--
 		}
 
 		log.Printf("\n")
