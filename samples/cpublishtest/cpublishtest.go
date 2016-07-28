@@ -250,52 +250,70 @@ func main() {
 		}()
 
 		// wait connecet
+		waitCnt := subClient / 100
 		for {
+			time.Sleep(1 * time.Second)
 			log.Printf("connected: %d\n", connectedCnt)
-			if stop || connectedCnt == subClient {
+			if stop || connectedCnt == subClient || waitCnt == 0 {
 				break
 			}
-			time.Sleep(1 * time.Second)
+			waitCnt--
 		}
 
 		// wait sub
+		waitCnt = subClient / 100
 		for {
+			time.Sleep(1 * time.Second)
 			log.Printf("subacked: %d\n", subacked)
-			if stop || subacked == subClient {
+			if stop || subacked == subClient || waitCnt == 0 {
 				break
 			}
-			time.Sleep(1 * time.Second)
+			waitCnt--
 		}
 		wgSub.Done()
 
 		pubTotal := *pubEach * *pubClient
+		msgTotal := pubTotal * subClient
 		// wait message
+		waitCnt = msgTotal / 10
 		for {
-			log.Printf("received: %d\n", msgRecv)
-			if stop || msgRecv == (pubTotal * subClient) {
+			time.Sleep(1 * time.Second)
+			if pubStarted {
+
+				log.Printf("received: %d\n", msgRecv)
+			}
+			if stop || msgRecv == msgTotal {
 				break
 			}
-			time.Sleep(1 * time.Second)
 		}
+
+		log.Printf("\n")
+		log.Printf("pub client: %d, sub client: %d\n", pubTotal, subClient)
+		log.Printf("\n")
+		log.Printf("connect: expec: %d, succ: %d, fail: %d\n", subClient, connectedCnt, subClient - connectedCnt)
+		log.Printf("sub: expec: %d, succ: %d, fail: %d\n", subClient, subacked, subClient - subacked)
 
 		if msgRecv == 0 {
 			log.Printf("\n")
-			log.Printf("incompleted test\n")
+			log.Printf("no message received\n")
 			log.Printf("\n")
-			return
-		}
+		} else {
+			totalTime := int64(0)
 
-		totalTime := int64(0)
-
-		for _, usedTime := range usedTimes {
-			for _, ms := range usedTime {
-				totalTime += ms
+			for _, usedTime := range usedTimes {
+				for _, ms := range usedTime {
+					totalTime += ms
+				}
 			}
+			log.Printf("message: expec: %d, succ: %d, fail: %d\n", msgTotal, msgRecv, msgTotal - msgRecv)
+			log.Printf("time: max: %d, min: %d, avg: %d\n", maxTime, minTime, totalTime / int64(msgRecv))
+			log.Printf("\n")
+
+			//log.Printf("\n")
+			//log.Printf("pub: %d, sub: %d, received: %d, lost: %d", pubTotal, subClient, msgRecv, msgTotal - msgRecv)
+			//log.Printf("serial: %d ms, parallel: %d ms, max: %d ms, min: %d ms, avg: %d ms\n", totalTime, endTime - beginTime, maxTime, minTime, totalTime / int64(msgRecv))
+			//log.Printf("%d/%d/%d\n", maxTime, minTime, totalTime / int64(subClient * *pubEach * *pubClient))
+			//log.Printf("\n")
 		}
-		log.Printf("\n")
-		log.Printf("pub: %d, sub: %d, received: %d, lost: %d", pubTotal, subClient, msgRecv, pubTotal * subClient - msgRecv)
-		log.Printf("serial: %d ms, parallel: %d ms, max: %d ms, min: %d ms, avg: %d ms\n", totalTime, endTime - beginTime, maxTime, minTime, totalTime / int64(subClient * *pubEach * *pubClient))
-		log.Printf("%d/%d/%d\n", maxTime, minTime, totalTime / int64(subClient * *pubEach * *pubClient))
-		log.Printf("\n")
 	}
 }
