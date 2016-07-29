@@ -234,7 +234,7 @@ func main() {
 			log.Printf("add sub[%d]: %s\n", index, fileScanner.Text())
 			regInfo := strings.Split(fileScanner.Text(), "|")
 			go doTest(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, 1)
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(200 * time.Millisecond)
 			index++
 			if index == *subCnt {
 				break
@@ -250,7 +250,7 @@ func main() {
 			log.Printf("add pub[%d]: %s\n", index, fileScanner.Text())
 			regInfo := strings.Split(fileScanner.Text(), "|")
 			go doTest(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, 2)
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(10 * time.Millisecond)
 			index++
 			if index == *pubCnt {
 				break
