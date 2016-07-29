@@ -45,8 +45,8 @@ func onSuback() {
 }
 
 func defaultPublishHandler(client *MQTT.MqttClient, msg MQTT.Message) {
-	log.Printf("topic: %s\n", msg.Topic())
-	log.Printf("msg: %s\n", msg.Payload())
+	//log.Printf("topic: %s\n", msg.Topic())
+	//log.Printf("msg: %s\n", msg.Payload())
 }
 
 func onMessageReceived(client *MQTT.MqttClient, message MQTT.Message) {
@@ -184,7 +184,7 @@ func main() {
 	qos := flag.Int("qos", 0, "The QoS to send the messages at")
 	broker := flag.String("broker", "tcp://123.56.125.40:1883", "Broker address, default: tcp://123.56.125.40:1883")
 
-	regCnt := flag.Int("client", 1, "Number of registration")
+	regCnt := flag.Int("regcnt", 1, "Number of registration")
 	pubCnt := flag.Int("pubcnt", 1, "Number of client for publish")
 	subCnt := flag.Int("subcnt", 1, "Number of client for subscribe")
 	pubEach := flag.Int("pubeach", 1, "How many publish one client do")
@@ -231,7 +231,7 @@ func main() {
 		wgSub.Add(1)
 		index := 0
 		for fileScanner.Scan() {
-			log.Printf("add sub: %s\n", fileScanner.Text())
+			log.Printf("add sub[%d]: %s\n", index, fileScanner.Text())
 			regInfo := strings.Split(fileScanner.Text(), "|")
 			go doTest(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, 1)
 			time.Sleep(100 * time.Millisecond)
@@ -247,7 +247,7 @@ func main() {
 
 		index = 0
 		for fileScanner.Scan() {
-			log.Printf("add pub: %s\n", fileScanner.Text())
+			log.Printf("add pub[%d]: %s\n", index, fileScanner.Text())
 			regInfo := strings.Split(fileScanner.Text(), "|")
 			go doTest(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, 2)
 			time.Sleep(100 * time.Millisecond)
@@ -272,6 +272,7 @@ func main() {
 		clientCnt := (*subCnt + *pubCnt)
 		// wait connecet
 		waitCnt := clientCnt / 100
+		log.Printf("wait connect %d seconds...\n", waitCnt)
 		for {
 			time.Sleep(1 * time.Second)
 			log.Printf("connected: %d\n", connectedCnt)
@@ -282,7 +283,8 @@ func main() {
 		}
 
 		// wait sub
-		waitCnt = clientCnt / 10
+		waitCnt = *subCnt / 10
+		log.Printf("wait sub %d seconds...\n", waitCnt)
 		for {
 			time.Sleep(1 * time.Second)
 			log.Printf("subacked: %d\n", subacked)
@@ -297,6 +299,7 @@ func main() {
 		msgTotal := pubTotal * *subCnt
 		// wait message
 		waitCnt = 10 + pubTotal / 10
+		log.Printf("wait message %d seconds...\n", waitCnt)
 		for {
 			time.Sleep(1 * time.Second)
 			if pubStarted {
