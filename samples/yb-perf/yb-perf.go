@@ -234,7 +234,7 @@ func main() {
 			log.Printf("add sub[%d]: %s\n", index, fileScanner.Text())
 			regInfo := strings.Split(fileScanner.Text(), "|")
 			go doTest(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, 1)
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(120 * time.Millisecond)
 			index++
 			if index == *subCnt {
 				break
@@ -283,7 +283,7 @@ func main() {
 		}
 
 		// wait sub
-		waitCnt = *subCnt / 10
+		waitCnt = *subCnt / 50
 		log.Printf("wait sub %d seconds...\n", waitCnt)
 		for {
 			time.Sleep(1 * time.Second)
@@ -298,7 +298,7 @@ func main() {
 		pubTotal := *pubEach * *pubCnt
 		msgTotal := pubTotal * *subCnt
 		// wait message
-		waitCnt = 10 + pubTotal / 10
+		waitCnt = 20 + pubTotal / 10
 		log.Printf("wait message %d seconds...\n", waitCnt)
 		for {
 			time.Sleep(1 * time.Second)
