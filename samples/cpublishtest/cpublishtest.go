@@ -15,12 +15,9 @@ import (
 	"os/signal"
 )
 
-var msgSent int = 0
 var msgRecv int = 0
 var wgReg sync.WaitGroup
 var wgSub sync.WaitGroup
-//var wgRecv sync.WaitGroup
-//var wgWork sync.WaitGroup
 
 var pubTimes [][]int64 // ns
 var usedTimes [][]int64 // ms
@@ -29,13 +26,19 @@ var minTime int64 = math.MaxInt64
 var maxTime int64 = math.MinInt64
 var lockTime sync.Mutex
 
-var beginTime int64 = 0
-var endTime int64 = 0
 var beginTimeSet bool = false
 var lockTime2 sync.Mutex
 var pubStarted bool = false
 var connectedCnt int = 0
 var subacked int = 0
+var connectionLost int = 0
+var beginTime int64 = 0
+var endTime int64 = 0
+
+func OnConnectionLost(client *MQTT.MqttClient, reason error) {
+	connectionLost++
+	log.Printf("error: %v\n", reason)
+}
 
 func onSuback() {
 	subacked++
@@ -112,7 +115,7 @@ func doReg(index int, regFile *os.File, appkey *string, topic *string, qos int, 
 	wgReg.Done()
 }
 
-func doWork(index int, clientid *string, user *string, pass *string, broker *string, topic *string, qos int, msgLen int, pubEach int, interval int, doPub bool) {
+func doTest(index int, clientid *string, user *string, pass *string, broker *string, topic *string, qos int, msgLen int, pubEach int, interval int, mode int) {
 	connOpts := MQTT.NewClientOptions()
 	connOpts.AddBroker(*broker)
 	connOpts.SetClientId(*clientid)
@@ -124,6 +127,7 @@ func doWork(index int, clientid *string, user *string, pass *string, broker *str
 
 	connOpts.SetDefaultPublishHandler(defaultPublishHandler)
 	// connOpts.SetKeepAlive(300)
+	connOpts.SetOnConnectionLost(OnConnectionLost)
 
 	client := MQTT.NewClient(connOpts)
 	_, err := client.Start()
@@ -138,18 +142,19 @@ func doWork(index int, clientid *string, user *string, pass *string, broker *str
 		log.Fatal(err)
 	}
 
-	// sub
-	client.StartSubscription(onMessageReceived, onSuback, filter)
+	if mode == 1 {
+		// sub
+		client.StartSubscription(onMessageReceived, onSuback, filter)
+	} else if mode == 2 {
+		// pub
+		msg := make([]byte, msgLen)
+		binary.LittleEndian.PutUint32(msg, uint32(index))
 
-	msg := make([]byte, msgLen)
-	binary.LittleEndian.PutUint32(msg, uint32(index))
+		wgSub.Wait()
 
-	wgSub.Wait()
+		time.Sleep(5 * time.Second)
+		pubStarted = true
 
-	time.Sleep(5 * time.Second)
-	pubStarted = true
-
-	if doPub {
 		if !beginTimeSet {
 			lockTime2.Lock()
 			if !beginTimeSet {
@@ -167,11 +172,8 @@ func doWork(index int, clientid *string, user *string, pass *string, broker *str
 			time.Sleep(time.Duration(interval) * time.Millisecond)
 		}
 	}
-
-	//wgRecv.Wait()
-
 	// unsub
-	//	client.EndSubscription(*topic)
+	// client.EndSubscription(*topic)
 	// wgWork.Done()
 }
 
@@ -182,8 +184,9 @@ func main() {
 	qos := flag.Int("qos", 0, "The QoS to send the messages at")
 	broker := flag.String("broker", "tcp://123.56.125.40:1883", "Broker address, default: tcp://123.56.125.40:1883")
 
-	client := flag.Int("client", 1, "Number of clients for registration and subscription")
-	pubClient := flag.Int("pubclient", 1, "Number of client for publishing")
+	regCnt := flag.Int("client", 1, "Number of registration")
+	pubCnt := flag.Int("pubcnt", 1, "Number of client for publish")
+	subCnt := flag.Int("subcnt", 1, "Number of client for subscribe")
 	pubEach := flag.Int("pubeach", 1, "How many publish one client do")
 	interval := flag.Int("interval", 1000, "Interval of publishes(when [pubeach] > 1), millisecond")
 
@@ -198,7 +201,7 @@ func main() {
 			log.Fatal(err)
 		}
 		defer regFile.Close()
-		for i := 0; i < *client; i++ {
+		for i := 0; i < *regCnt; i++ {
 			wgReg.Add(1)
 			go doReg(i, regFile, appkey, topic, *qos, broker)
 			time.Sleep(10 * time.Millisecond)
@@ -209,11 +212,11 @@ func main() {
 		if *msgLen < 8 {
 			*msgLen = 8
 		}
-		pubTimes = make([][]int64, *pubClient)
+		pubTimes = make([][]int64, *pubCnt)
 		for i := range pubTimes {
 			pubTimes[i] = make([]int64, *pubEach)
 		}
-		usedTimes = make([][]int64, *pubClient)
+		usedTimes = make([][]int64, *pubCnt)
 		for i := range usedTimes {
 			usedTimes[i] = make([]int64, *pubEach)
 		}
@@ -225,21 +228,32 @@ func main() {
 		defer regFile.Close()
 		fileScanner := bufio.NewScanner(regFile)
 
-		//wgRecv.Add(1)
 		wgSub.Add(1)
-		// wgWork.Add(subClient)
 		index := 0
 		for fileScanner.Scan() {
-			log.Printf("add: %s\n", fileScanner.Text())
+			log.Printf("add sub: %s\n", fileScanner.Text())
 			regInfo := strings.Split(fileScanner.Text(), "|")
-			go doWork(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, index < *pubClient)
-			time.Sleep(10 * time.Millisecond)
+			go doTest(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, 1)
+			time.Sleep(100 * time.Millisecond)
 			index++
-			if index >= *client {
-				break
-			}
 		}
-		subClient := index
+		if index < *subCnt {
+			log.Printf("no enough reg info for sub\n")
+			return
+		}
+
+		index = 0
+		for fileScanner.Scan() {
+			log.Printf("add pub: %s\n", fileScanner.Text())
+			regInfo := strings.Split(fileScanner.Text(), "|")
+			go doTest(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, 2)
+			time.Sleep(100 * time.Millisecond)
+			index++
+		}
+		if index < *pubCnt {
+			log.Printf("no enough reg info for pub\n")
+			return
+		}
 
 		stop := false
 		c := make(chan os.Signal, 1)
@@ -249,31 +263,32 @@ func main() {
 			stop = true
 		}()
 
+		clientCnt := (*subCnt + *pubCnt)
 		// wait connecet
-		waitCnt := subClient / 100
+		waitCnt := clientCnt / 100
 		for {
 			time.Sleep(1 * time.Second)
 			log.Printf("connected: %d\n", connectedCnt)
-			if stop || connectedCnt == subClient || waitCnt == 0 {
+			if stop || connectedCnt == clientCnt || waitCnt == 0 {
 				break
 			}
 			waitCnt--
 		}
 
 		// wait sub
-		waitCnt = subClient / 100
+		waitCnt = clientCnt / 10
 		for {
 			time.Sleep(1 * time.Second)
 			log.Printf("subacked: %d\n", subacked)
-			if stop || subacked == subClient || waitCnt == 0 {
+			if stop || subacked == *subCnt || waitCnt == 0 {
 				break
 			}
 			waitCnt--
 		}
 		wgSub.Done()
 
-		pubTotal := *pubEach * *pubClient
-		msgTotal := pubTotal * subClient
+		pubTotal := *pubEach * *pubCnt
+		msgTotal := pubTotal * *subCnt
 		// wait message
 		waitCnt = 10 + pubTotal / 10
 		for {
@@ -290,10 +305,11 @@ func main() {
 		}
 
 		log.Printf("\n")
-		log.Printf("pub client: %d, sub client: %d\n", pubTotal, subClient)
+		log.Printf("pub client: %d, sub client: %d\n", *pubCnt, *subCnt)
+		log.Printf("connection lost: %d\n", connectionLost)
 		log.Printf("\n")
-		log.Printf("connect: expec: %d, succ: %d, fail: %d\n", subClient, connectedCnt, subClient - connectedCnt)
-		log.Printf("sub: expec: %d, succ: %d, fail: %d\n", subClient, subacked, subClient - subacked)
+		log.Printf("connect: expec/succ/fail = %d/%d/%d\n", clientCnt, connectedCnt, clientCnt - connectedCnt)
+		log.Printf("sub: expec/succ/fail = %d/%d/%d\n", *subCnt, subacked, *subCnt - subacked)
 
 		if msgRecv == 0 {
 			log.Printf("\n")
@@ -307,8 +323,14 @@ func main() {
 					totalTime += ms
 				}
 			}
-			log.Printf("message: expec: %d, succ: %d, fail: %d\n", msgTotal, msgRecv, msgTotal - msgRecv)
-			log.Printf("time: max: %d, min: %d, avg: %d\n", maxTime, minTime, totalTime / int64(msgRecv))
+			log.Printf("message: expec/succ/fail = %d/%d/%d\n", msgTotal, msgRecv, msgTotal - msgRecv)
+			log.Printf("time: max/min/avg = %d/%d/%d\n", maxTime, minTime, totalTime / int64(msgRecv))
+			log.Printf("\n")
+			if msgRecv != msgTotal {
+				log.Printf("some message lost\n")
+				log.Printf("\n")
+			}
+			log.Printf("for excel: %d\t%d\t%d\t%d\n", maxTime, minTime, totalTime / int64(msgRecv), msgTotal - msgRecv)
 			log.Printf("\n")
 
 			//log.Printf("\n")
