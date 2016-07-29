@@ -236,6 +236,9 @@ func main() {
 			go doTest(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, 1)
 			time.Sleep(100 * time.Millisecond)
 			index++
+			if index == *subCnt {
+				break
+			}
 		}
 		if index < *subCnt {
 			log.Printf("no enough reg info for sub\n")
@@ -249,6 +252,9 @@ func main() {
 			go doTest(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, 2)
 			time.Sleep(100 * time.Millisecond)
 			index++
+			if index == *pubCnt {
+				break
+			}
 		}
 		if index < *pubCnt {
 			log.Printf("no enough reg info for pub\n")
