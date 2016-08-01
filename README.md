@@ -15,7 +15,7 @@ go run yb-perf.go --help
 go run yb-perf.go --broker tcp://127.0.0.1:1883 --reg --regcnt 1
 ```
 
-## 开始测试
+## 测试 `publish`
 ```bash
 go run yb-perf.go --broker tcp://127.0.0.1:1883 --pubcnt 1 --subcnt 100
 ```
