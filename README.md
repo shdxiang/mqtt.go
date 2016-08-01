@@ -1,4 +1,4 @@
-基于 云巴 Go SDK [yunba/mqtt.go](https://github.com/yunba/mqtt.go) 修改的 `publish` 性能测试工具。
+基于 [云巴 Go SDK](https://github.com/yunba/mqtt.go) 修改的 `publish` 性能测试工具。
 
 ## 先进入测试程序所在目录：
 ```bash
