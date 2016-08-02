@@ -1,6 +1,11 @@
 基于 [云巴 Go SDK](https://github.com/yunba/mqtt.go) 修改的 `publish` 性能测试工具。
 
-## 先进入测试程序所在目录：
+## 安装依赖 websocket:
+```bash
+go get golang.org/x/net/websocket
+```
+
+## 进入测试程序所在目录：
 ```bash
 cd samples/yb-perf
 ```
