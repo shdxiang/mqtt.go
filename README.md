@@ -12,7 +12,7 @@ go run yb-perf.go --help
 
 ## 注册
 ```bash
-go run yb-perf.go --broker tcp://127.0.0.1:1883 --reg --regcnt 1
+go run yb-perf.go --broker tcp://127.0.0.1:1883 --reg 1
 ```
 
 ## 测试 publish

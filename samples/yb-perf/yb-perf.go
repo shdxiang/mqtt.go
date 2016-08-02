@@ -11,7 +11,7 @@ import (
 	"sync"
 	"strings"
 	"encoding/binary"
-	MQTT "github.com/shdxiang/mqtt.go"
+	MQTT "../../"
 	"os/signal"
 )
 
@@ -184,24 +184,24 @@ func main() {
 	qos := flag.Int("qos", 0, "The QoS to send the messages at")
 	broker := flag.String("broker", "tcp://123.56.125.40:1883", "Broker address, default: tcp://123.56.125.40:1883")
 
-	regCnt := flag.Int("regcnt", 1, "Number of registration")
+	reg := flag.Int("reg", 0, "Number of registration")
 	pubCnt := flag.Int("pubcnt", 1, "Number of client for publish")
 	subCnt := flag.Int("subcnt", 1, "Number of client for subscribe")
 	pubEach := flag.Int("pubeach", 1, "How many publish one client do")
 	interval := flag.Int("interval", 1000, "Interval of publishes(when [pubeach] > 1), millisecond")
 
-	reg := flag.Bool("reg", false, "Only register and save the infomation")
+	// reg := flag.Bool("reg", false, "Only register and save the infomation")
 	file := flag.String("file", "./reg.info", "Register infomation file")
 	//retained := flag.Bool("retained", false, "Are the messages sent with the retained flag")
 	flag.Parse()
 
-	if *reg == true {
+	if *reg > 0 {
 		regFile, err := os.Create(*file)
 		if err != nil {
 			log.Fatal(err)
 		}
 		defer regFile.Close()
-		for i := 0; i < *regCnt; i++ {
+		for i := 0; i < *reg; i++ {
 			wgReg.Add(1)
 			go doReg(i, regFile, appkey, topic, *qos, broker)
 			time.Sleep(10 * time.Millisecond)
