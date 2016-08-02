@@ -1,6 +1,6 @@
 基于 [云巴 Go SDK](https://github.com/yunba/mqtt.go) 修改的 `publish` 性能测试工具。
 
-## 安装依赖 websocket:
+## 安装依赖的 websocket:
 ```bash
 go get golang.org/x/net/websocket
 ```
