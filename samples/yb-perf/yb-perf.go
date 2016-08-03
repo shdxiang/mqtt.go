@@ -11,7 +11,7 @@ import (
 	"sync"
 	"strings"
 	"encoding/binary"
-	MQTT "../../"
+	MQTT "github.com/shdxiang/yb-perf-go"
 	"os/signal"
 )
 
