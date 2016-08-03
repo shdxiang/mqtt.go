@@ -23,6 +23,6 @@ go build
 
 ## 测试 publish
 ```bash
-./run yb-perf.go --broker tcp://127.0.0.1:1883 --pubcnt 1 --subcnt 1
+./yb-perf.go --broker tcp://127.0.0.1:1883 --pubcnt 1 --subcnt 1
 ```
 
