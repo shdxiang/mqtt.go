@@ -19,6 +19,9 @@ var msgRecv int = 0
 var wgReg sync.WaitGroup
 var wgSub sync.WaitGroup
 
+var wgUnsub sync.WaitGroup
+var wgExit sync.WaitGroup
+
 var pubTimes [][]int64 // ns
 var usedTimes [][]int64 // ms
 
@@ -89,6 +92,19 @@ func onMessageReceived(client *MQTT.MqttClient, message MQTT.Message) {
 	msgRecv++
 }
 
+func onMessageReceivedDemon(client *MQTT.MqttClient, message MQTT.Message) {
+	data := message.Payload()
+
+	log.Printf("recv msg len: %d", len(data))
+	log.Printf("received message on topic: %s\n", message.Topic())
+	l := len(data)
+	if l > 8 {
+		l = 8;
+	}
+	log.Printf("message[0~7]: %s\n", data[:l])
+	msgRecv++
+}
+
 func doReg(index int, regFile *os.File, appkey *string, topic *string, qos int, broker *string) {
 	deviceId := strconv.Itoa(time.Now().Second()) + strconv.Itoa(index)
 
@@ -145,6 +161,12 @@ func doTest(index int, clientid *string, user *string, pass *string, broker *str
 	if mode == 1 {
 		// sub
 		client.StartSubscription(onMessageReceived, onSuback, filter)
+		wgUnsub.Add(1)
+
+		wgExit.Wait()
+		// unsub
+		client.EndSubscription(*topic)
+		wgUnsub.Done()
 	} else if mode == 2 {
 		// pub
 		msg := make([]byte, msgLen)
@@ -152,7 +174,7 @@ func doTest(index int, clientid *string, user *string, pass *string, broker *str
 
 		wgSub.Wait()
 
-		time.Sleep(5 * time.Second)
+		time.Sleep(1 * time.Second)
 		pubStarted = true
 
 		if !beginTimeSet {
@@ -171,10 +193,16 @@ func doTest(index int, clientid *string, user *string, pass *string, broker *str
 			log.Printf("published\n")
 			time.Sleep(time.Duration(interval) * time.Millisecond)
 		}
+	} else if mode == 3 {
+		// sub
+		client.StartSubscription(onMessageReceivedDemon, onSuback, filter)
+		wgUnsub.Add(1)
+
+		wgExit.Wait()
+		// unsub
+		client.EndSubscription(*topic)
+		wgUnsub.Done()
 	}
-	// unsub
-	// client.EndSubscription(*topic)
-	// wgWork.Done()
 }
 
 func main() {
@@ -190,11 +218,15 @@ func main() {
 	pubEach := flag.Int("pubeach", 1, "How many publish one client do")
 	interval := flag.Int("interval", 1000, "Interval of publishes(when [pubeach] > 1), millisecond")
 
+	timeout := flag.Int("timeout", 0, "The time we wait for message, second, 0: compute by message number, -1: forerver")
+	demon := flag.Bool("demon", false, "Only subscribe and receive messages, pubCnt will be ignored")
+
 	// reg := flag.Bool("reg", false, "Only register and save the infomation")
 	file := flag.String("file", "./reg.info", "Register infomation file")
 	//retained := flag.Bool("retained", false, "Are the messages sent with the retained flag")
 	flag.Parse()
 
+	wgExit.Add(1)
 	if *reg > 0 {
 		regFile, err := os.Create(*file)
 		if err != nil {
@@ -209,6 +241,12 @@ func main() {
 		wgReg.Wait()
 		// regFile.Sync()
 	} else {
+		mode := 1
+		if *demon {
+			*pubCnt = 0
+			mode = 3
+		}
+
 		if *msgLen < 8 {
 			*msgLen = 8
 		}
@@ -231,30 +269,31 @@ func main() {
 		wgSub.Add(1)
 		index := 0
 		for fileScanner.Scan() {
-			log.Printf("add sub[%d]: %s\n", index, fileScanner.Text())
-			regInfo := strings.Split(fileScanner.Text(), "|")
-			go doTest(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, 1)
-			time.Sleep(120 * time.Millisecond)
-			index++
 			if index == *subCnt {
 				break
 			}
+			log.Printf("add sub[%d]: %s\n", index, fileScanner.Text())
+			regInfo := strings.Split(fileScanner.Text(), "|")
+			go doTest(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, mode)
+			time.Sleep(120 * time.Millisecond)
+			index++
 		}
 		if index < *subCnt {
 			log.Printf("no enough reg info for sub\n")
 			return
 		}
 
+		mode = 2
 		index = 0
 		for fileScanner.Scan() {
-			log.Printf("add pub[%d]: %s\n", index, fileScanner.Text())
-			regInfo := strings.Split(fileScanner.Text(), "|")
-			go doTest(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, 2)
-			time.Sleep(10 * time.Millisecond)
-			index++
-			if index == *pubCnt {
+			if index >= *pubCnt {
 				break
 			}
+			log.Printf("add pub[%d]: %s\n", index, fileScanner.Text())
+			regInfo := strings.Split(fileScanner.Text(), "|")
+			go doTest(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, mode)
+			time.Sleep(10 * time.Millisecond)
+			index++
 		}
 		if index < *pubCnt {
 			log.Printf("no enough reg info for pub\n")
@@ -271,7 +310,7 @@ func main() {
 
 		clientCnt := (*subCnt + *pubCnt)
 		// wait connecet
-		waitCnt := clientCnt / 100
+		waitCnt := 5 + clientCnt / 100
 		log.Printf("wait connect %d seconds...\n", waitCnt)
 		for {
 			time.Sleep(1 * time.Second)
@@ -283,7 +322,7 @@ func main() {
 		}
 
 		// wait sub
-		waitCnt = *subCnt / 50
+		waitCnt = 5 + *subCnt / 50
 		log.Printf("wait sub %d seconds...\n", waitCnt)
 		for {
 			time.Sleep(1 * time.Second)
@@ -298,20 +337,40 @@ func main() {
 		pubTotal := *pubEach * *pubCnt
 		msgTotal := pubTotal * *subCnt
 		// wait message
-		waitCnt = 20 + pubTotal / 10
-		log.Printf("wait message %d seconds...\n", waitCnt)
+		if *timeout == 0 {
+			waitCnt = 20 + pubTotal / 10
+		} else {
+			waitCnt = *timeout
+		}
+
+		if *demon || waitCnt == -1 {
+			log.Printf("wait message forever...\n")
+		} else {
+			log.Printf("wait message %d seconds...\n", waitCnt)
+		}
+
 		for {
+			if stop {
+				break
+			}
 			time.Sleep(1 * time.Second)
-			if pubStarted {
-				log.Printf("received: %d\n", msgRecv)
-			} else {
+			//if pubStarted {
+			log.Printf("received: %d\n", msgRecv)
+			//} else {
+			//	continue
+			//}
+
+			if *demon || waitCnt == -1 {
 				continue
 			}
-			if stop || msgRecv == msgTotal || waitCnt == 0 {
+			if msgRecv == msgTotal || waitCnt == 0 {
 				break
 			}
 			waitCnt--
 		}
+
+		wgExit.Done()
+		wgUnsub.Wait()
 
 		log.Printf("\n")
 		log.Printf("pub client: %d, sub client: %d\n", *pubCnt, *subCnt)
@@ -323,6 +382,10 @@ func main() {
 		if msgRecv == 0 {
 			log.Printf("\n")
 			log.Printf("no message received\n")
+			log.Printf("\n")
+		} else if *demon {
+			log.Printf("\n")
+			log.Printf("message receive: %d\n", msgRecv)
 			log.Printf("\n")
 		} else {
 			totalTime := int64(0)
@@ -341,12 +404,6 @@ func main() {
 			}
 			log.Printf("for excel: %d\t%d\t%d\t%d\n", maxTime, minTime, totalTime / int64(msgRecv), msgTotal - msgRecv)
 			log.Printf("\n")
-
-			//log.Printf("\n")
-			//log.Printf("pub: %d, sub: %d, received: %d, lost: %d", pubTotal, subClient, msgRecv, msgTotal - msgRecv)
-			//log.Printf("serial: %d ms, parallel: %d ms, max: %d ms, min: %d ms, avg: %d ms\n", totalTime, endTime - beginTime, maxTime, minTime, totalTime / int64(msgRecv))
-			//log.Printf("%d/%d/%d\n", maxTime, minTime, totalTime / int64(subClient * *pubEach * *pubClient))
-			//log.Printf("\n")
 		}
 	}
 }
