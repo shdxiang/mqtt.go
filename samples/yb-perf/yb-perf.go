@@ -166,6 +166,7 @@ func doTest(index int, clientid *string, user *string, pass *string, broker *str
 		wgExit.Wait()
 		// unsub
 		client.EndSubscription(*topic)
+		time.Sleep(2 * time.Second)
 		wgUnsub.Done()
 	} else if mode == 2 {
 		// pub
@@ -201,6 +202,7 @@ func doTest(index int, clientid *string, user *string, pass *string, broker *str
 		wgExit.Wait()
 		// unsub
 		client.EndSubscription(*topic)
+		time.Sleep(2 * time.Second)
 		wgUnsub.Done()
 	}
 }
