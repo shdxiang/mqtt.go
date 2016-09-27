@@ -221,7 +221,7 @@ func main() {
 	interval := flag.Int("interval", 1000, "Interval of publishes(when [pubeach] > 1), millisecond")
 
 	timeout := flag.Int("timeout", 0, "The time we wait for message, second, 0: compute by message number, -1: forerver")
-	demon := flag.Bool("demon", false, "Only subscribe and receive messages, pubCnt will be ignored")
+	daemon := flag.Bool("daemon", false, "Only subscribe and receive messages, pubCnt will be ignored")
 
 	// reg := flag.Bool("reg", false, "Only register and save the infomation")
 	file := flag.String("file", "./reg.info", "Register infomation file")
@@ -244,7 +244,7 @@ func main() {
 		// regFile.Sync()
 	} else {
 		mode := 1
-		if *demon {
+		if *daemon {
 			*pubCnt = 0
 			mode = 3
 		}
@@ -345,7 +345,7 @@ func main() {
 			waitCnt = *timeout
 		}
 
-		if *demon || waitCnt == -1 {
+		if *daemon || waitCnt == -1 {
 			log.Printf("wait message forever...\n")
 		} else {
 			log.Printf("wait message %d seconds...\n", waitCnt)
@@ -362,7 +362,7 @@ func main() {
 			//	continue
 			//}
 
-			if *demon || waitCnt == -1 {
+			if *daemon || waitCnt == -1 {
 				continue
 			}
 			if msgRecv == msgTotal || waitCnt == 0 {
@@ -385,7 +385,7 @@ func main() {
 			log.Printf("\n")
 			log.Printf("no message received\n")
 			log.Printf("\n")
-		} else if *demon {
+		} else if *daemon {
 			log.Printf("\n")
 			log.Printf("message receive: %d\n", msgRecv)
 			log.Printf("\n")
