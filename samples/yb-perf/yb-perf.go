@@ -18,7 +18,7 @@ import (
 var msgRecv int = 0
 var wgReg sync.WaitGroup
 var wgSub sync.WaitGroup
-
+var wgPub sync.WaitGroup
 var wgUnsub sync.WaitGroup
 var wgExit sync.WaitGroup
 
@@ -54,12 +54,11 @@ func defaultPublishHandler(client *MQTT.MqttClient, msg MQTT.Message) {
 
 func onMessageReceived(client *MQTT.MqttClient, message MQTT.Message) {
 	if !pubStarted {
+		log.Printf("received message before publish")
 		return
 	}
 	ns := time.Now().UnixNano()
 	data := message.Payload()
-
-	//log.Printf("recv msg len: %d", len(data))
 
 	i := binary.LittleEndian.Uint32(data)
 	j := binary.LittleEndian.Uint32(data[4:])
@@ -80,15 +79,6 @@ func onMessageReceived(client *MQTT.MqttClient, message MQTT.Message) {
 	endTime = time.Now().UnixNano() / 1000000
 	lockTime2.Unlock()
 
-	// log.Printf("recv msg len: %d", len(data))
-
-	// log.Printf("Received message on topic: %s\n", message.Topic())
-	// data := message.Payload()
-	// l := len(data)
-	// if l > 8 {
-	// 	l = 8;
-	// }
-	// log.Printf("message: %s\n", data[:l])
 	msgRecv++
 }
 
@@ -174,9 +164,8 @@ func doTest(index int, clientid *string, user *string, pass *string, broker *str
 		binary.LittleEndian.PutUint32(msg, uint32(index))
 
 		wgSub.Wait()
-
-		time.Sleep(1 * time.Second)
 		pubStarted = true
+		time.Sleep(1 * time.Second)
 
 		if !beginTimeSet {
 			lockTime2.Lock()
@@ -194,6 +183,7 @@ func doTest(index int, clientid *string, user *string, pass *string, broker *str
 			log.Printf("published\n")
 			time.Sleep(time.Duration(interval) * time.Millisecond)
 		}
+		wgPub.Done()
 	} else if mode == 3 {
 		// sub
 		client.StartSubscription(onMessageReceivedDemon, onSuback, filter)
@@ -293,6 +283,7 @@ func main() {
 			}
 			log.Printf("add pub[%d]: %s\n", index, fileScanner.Text())
 			regInfo := strings.Split(fileScanner.Text(), "|")
+			wgPub.Add(1)
 			go doTest(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, mode)
 			time.Sleep(10 * time.Millisecond)
 			index++
@@ -371,7 +362,9 @@ func main() {
 			waitCnt--
 		}
 
+		log.Printf("prepare exiting...\n")
 		wgExit.Done()
+		wgPub.Wait()
 		wgUnsub.Wait()
 
 		log.Printf("\n")
