@@ -91,7 +91,7 @@ func onMessageReceivedDemon(client *MQTT.MqttClient, message MQTT.Message) {
 	if l > 8 {
 		l = 8;
 	}
-	log.Printf("message[0~7]: %s\n", data[:l])
+	//log.Printf("message[0~7]: %s\n", data[:l])
 	msgRecv++
 }
 
