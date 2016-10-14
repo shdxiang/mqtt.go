@@ -53,12 +53,14 @@ func defaultPublishHandler(client *MQTT.MqttClient, msg MQTT.Message) {
 }
 
 func onMessageReceived(client *MQTT.MqttClient, message MQTT.Message) {
+	ns := time.Now().UnixNano()
+	data := message.Payload()
+	log.Printf("received: index: %d, topic: %s, len: %d, time: %d", msgRecv, message.Topic(), len(data), ns / 1000000)
+	msgRecv++
 	if !pubStarted {
 		log.Printf("received message before publish")
 		return
 	}
-	ns := time.Now().UnixNano()
-	data := message.Payload()
 
 	i := binary.LittleEndian.Uint32(data)
 	j := binary.LittleEndian.Uint32(data[4:])
@@ -78,21 +80,18 @@ func onMessageReceived(client *MQTT.MqttClient, message MQTT.Message) {
 	lockTime2.Lock()
 	endTime = time.Now().UnixNano() / 1000000
 	lockTime2.Unlock()
-
-	msgRecv++
 }
 
 func onMessageReceivedDemon(client *MQTT.MqttClient, message MQTT.Message) {
+	ns := time.Now().UnixNano()
 	data := message.Payload()
-
-	log.Printf("recv msg len: %d", len(data))
-	log.Printf("received message on topic: %s\n", message.Topic())
+	log.Printf("received: index: %d, topic: %s, len: %d, time: %d", msgRecv, message.Topic(), len(data), ns / 1000000)
+	msgRecv++
 	l := len(data)
 	if l > 8 {
 		l = 8;
 	}
 	//log.Printf("message[0~7]: %s\n", data[:l])
-	msgRecv++
 }
 
 func doReg(index int, regFile *os.File, appkey *string, topic *string, qos int, broker *string) {
@@ -180,7 +179,7 @@ func doTest(index int, clientid *string, user *string, pass *string, broker *str
 			binary.LittleEndian.PutUint32(msg[4:], uint32(i))
 			pubTimes[index][i] = time.Now().UnixNano()
 			<-client.Publish(MQTT.QoS(qos), *topic, msg)
-			log.Printf("published\n")
+			log.Printf("published: index: %d:%d, topic: %s, len: %d, time: %d\n", index, i, *topic, msgLen, time.Now().UnixNano() / 1000000)
 			time.Sleep(time.Duration(interval) * time.Millisecond)
 		}
 		wgPub.Done()
@@ -303,7 +302,7 @@ func main() {
 
 		clientCnt := (*subCnt + *pubCnt)
 		// wait connecet
-		waitCnt := 5 + clientCnt / 100
+		waitCnt := 10 + clientCnt / 100
 		log.Printf("wait connect %d seconds...\n", waitCnt)
 		for {
 			time.Sleep(1 * time.Second)
@@ -315,7 +314,7 @@ func main() {
 		}
 
 		// wait sub
-		waitCnt = 5 + *subCnt / 50
+		waitCnt = 10 + *subCnt / 50
 		log.Printf("wait sub %d seconds...\n", waitCnt)
 		for {
 			time.Sleep(1 * time.Second)
@@ -348,7 +347,7 @@ func main() {
 			}
 			time.Sleep(1 * time.Second)
 			//if pubStarted {
-			log.Printf("received: %d\n", msgRecv)
+			//log.Printf("received: %d\n", msgRecv)
 			//} else {
 			//	continue
 			//}
