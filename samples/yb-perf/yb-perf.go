@@ -55,7 +55,7 @@ func onSuback() {
 }
 
 func defaultPublishHandler(client *MQTT.MqttClient, message MQTT.Message) {
-	log.Printf("defaultPublishHandler\n")
+	//log.Printf("defaultPublishHandler\n")
 }
 
 func onMessageReceivedStat(client *MQTT.MqttClient, message MQTT.Message) {
