@@ -296,19 +296,19 @@ func main() {
 		fileScanner := bufio.NewScanner(regFile)
 
 		// sub
-		wgSub.Add(1)
 		mode := MODE_SUB
 		if *pubCnt <= 0 {
 			mode = MODE_SUB_ONLY
 		}
+		wgSub.Add(*subCnt)
 		addTest(fileScanner, *subCnt, broker, topic, *qos, *msgLen, *pubEach, *interval, mode)
 
 		// pub
-		wgPub.Add(1)
 		mode = MODE_PUB
 		if *subCnt <= 0 {
 			mode = MODE_PUB_ONLY
 		}
+		wgPub.Add(*pubCnt)
 		addTest(fileScanner, *pubCnt, broker, topic, *qos, *msgLen, *pubEach, *interval, mode)
 
 		stop := false
