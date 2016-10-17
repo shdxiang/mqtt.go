@@ -15,6 +15,13 @@ import (
 	"os/signal"
 )
 
+const (
+	MODE_SUB = 1
+	MODE_PUB = 2
+	MODE_SUB_ONLY = 3
+	MODE_PUB_ONLY = 4
+)
+
 var msgRecv int = 0
 var wgReg sync.WaitGroup
 var wgSub sync.WaitGroup
@@ -47,12 +54,11 @@ func onSuback() {
 	subacked++
 }
 
-func defaultPublishHandler(client *MQTT.MqttClient, msg MQTT.Message) {
-	//log.Printf("topic: %s\n", msg.Topic())
-	//log.Printf("msg: %s\n", msg.Payload())
+func defaultPublishHandler(client *MQTT.MqttClient, message MQTT.Message) {
+	log.Printf("defaultPublishHandler\n")
 }
 
-func onMessageReceived(client *MQTT.MqttClient, message MQTT.Message) {
+func onMessageReceivedStat(client *MQTT.MqttClient, message MQTT.Message) {
 	ns := time.Now().UnixNano()
 	data := message.Payload()
 	log.Printf("received: index: %d, topic: %s, len: %d, time: %d", msgRecv, message.Topic(), len(data), ns / 1000000)
@@ -87,14 +93,9 @@ func onMessageReceivedDemon(client *MQTT.MqttClient, message MQTT.Message) {
 	data := message.Payload()
 	log.Printf("received: index: %d, topic: %s, len: %d, time: %d", msgRecv, message.Topic(), len(data), ns / 1000000)
 	msgRecv++
-	l := len(data)
-	if l > 8 {
-		l = 8;
-	}
-	//log.Printf("message[0~7]: %s\n", data[:l])
 }
 
-func doReg(index int, regFile *os.File, appkey *string, topic *string, qos int, broker *string) {
+func doRegister(index int, regFile *os.File, appkey *string, topic *string, qos int, broker *string) {
 	deviceId := strconv.Itoa(time.Now().Second()) + strconv.Itoa(index)
 
 	yunbaClient := &MQTT.YunbaClient{*appkey, deviceId}
@@ -104,12 +105,12 @@ func doReg(index int, regFile *os.File, appkey *string, topic *string, qos int, 
 	}
 
 	if regInfo.ErrCode != 0 {
-		log.Fatal("has error:", regInfo.ErrCode)
+		log.Fatal("error:", regInfo.ErrCode)
 	}
 
 	line := strings.Join([]string{regInfo.Client, regInfo.UserName, regInfo.Password}, "|")
 
-	log.Printf("line: %s\n", line)
+	log.Printf("reg info: %s\n", line)
 	writer := bufio.NewWriter(regFile)
 	_, err = writer.WriteString(line + "\n")
 	if err != nil {
@@ -120,7 +121,22 @@ func doReg(index int, regFile *os.File, appkey *string, topic *string, qos int, 
 	wgReg.Done()
 }
 
-func doTest(index int, clientid *string, user *string, pass *string, broker *string, topic *string, qos int, msgLen int, pubEach int, interval int, mode int) {
+func register(file *string, count int, appkey *string, topic *string, qos int, broker *string) {
+	regFile, err := os.Create(*file)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer regFile.Close()
+	for i := 0; i < count; i++ {
+		wgReg.Add(1)
+		go doRegister(i, regFile, appkey, topic, qos, broker)
+		time.Sleep(10 * time.Millisecond)
+	}
+	wgReg.Wait()
+	regFile.Sync()
+}
+
+func test(index int, clientid *string, user *string, pass *string, broker *string, topic *string, qos int, msgLen int, pubEach int, interval int, mode int) {
 	connOpts := MQTT.NewClientOptions()
 	connOpts.AddBroker(*broker)
 	connOpts.SetClientId(*clientid)
@@ -147,9 +163,9 @@ func doTest(index int, clientid *string, user *string, pass *string, broker *str
 		log.Fatal(err)
 	}
 
-	if mode == 1 {
+	if mode == MODE_SUB {
 		// sub
-		client.StartSubscription(onMessageReceived, onSuback, filter)
+		client.StartSubscription(onMessageReceivedStat, onSuback, filter)
 		wgUnsub.Add(1)
 
 		wgExit.Wait()
@@ -157,7 +173,7 @@ func doTest(index int, clientid *string, user *string, pass *string, broker *str
 		client.EndSubscription(*topic)
 		time.Sleep(2 * time.Second)
 		wgUnsub.Done()
-	} else if mode == 2 {
+	} else if mode == MODE_PUB {
 		// pub
 		msg := make([]byte, msgLen)
 		binary.LittleEndian.PutUint32(msg, uint32(index))
@@ -183,7 +199,7 @@ func doTest(index int, clientid *string, user *string, pass *string, broker *str
 			time.Sleep(time.Duration(interval) * time.Millisecond)
 		}
 		wgPub.Done()
-	} else if mode == 3 {
+	} else if mode == MODE_SUB_ONLY {
 		// sub
 		client.StartSubscription(onMessageReceivedDemon, onSuback, filter)
 		wgUnsub.Add(1)
@@ -193,6 +209,51 @@ func doTest(index int, clientid *string, user *string, pass *string, broker *str
 		client.EndSubscription(*topic)
 		time.Sleep(2 * time.Second)
 		wgUnsub.Done()
+	} else if mode == MODE_SUB_ONLY {
+		// pub
+		msg := make([]byte, msgLen)
+		binary.LittleEndian.PutUint32(msg, uint32(index))
+
+		wgSub.Wait()
+		pubStarted = true
+		time.Sleep(1 * time.Second)
+
+		for i := 0; i < pubEach; i++ {
+			binary.LittleEndian.PutUint32(msg[4:], uint32(i))
+			pubTimes[index][i] = time.Now().UnixNano()
+			<-client.Publish(MQTT.QoS(qos), *topic, msg)
+			log.Printf("published: index: %d:%d, topic: %s, len: %d, time: %d\n", index, i, *topic, msgLen, time.Now().UnixNano() / 1000000)
+			time.Sleep(time.Duration(interval) * time.Millisecond)
+		}
+		wgPub.Done()
+	}
+}
+
+func initStat(pubCnt int, pubEach int) {
+	pubTimes = make([][]int64, pubCnt)
+	for i := range pubTimes {
+		pubTimes[i] = make([]int64, pubEach)
+	}
+	usedTimes = make([][]int64, pubCnt)
+	for i := range usedTimes {
+		usedTimes[i] = make([]int64, pubEach)
+	}
+}
+
+func addTest(fileScanner *bufio.Scanner, count int, broker *string, topic *string, qos int, msgLen int, pubEach int, interval int, mode int) {
+	index := 0
+	for fileScanner.Scan() {
+		if index >= count {
+			break
+		}
+		log.Printf("addTest[%d], mode: %d, info: %s\n", index, mode, fileScanner.Text())
+		regInfo := strings.Split(fileScanner.Text(), "|")
+		go test(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, qos, msgLen, pubEach, interval, mode)
+		time.Sleep(120 * time.Millisecond)
+		index++
+	}
+	if index < count {
+		log.Fatal("no enough reg info for test\n")
 	}
 }
 
@@ -209,45 +270,22 @@ func main() {
 	pubEach := flag.Int("pubeach", 1, "How many publish one client do")
 	interval := flag.Int("interval", 1000, "Interval of publishes(when [pubeach] > 1), millisecond")
 
-	timeout := flag.Int("timeout", 0, "The time we wait for message, second, 0: compute by message number, -1: forerver")
-	daemon := flag.Bool("daemon", false, "Only subscribe and receive messages, pubCnt will be ignored")
+	timeout := flag.Int("timeout", 0, "The time we wait for message, second, 0: auto compute, -1: forerver")
+	//daemon := flag.Bool("daemon", false, "Only subscribe and receive messages, pubCnt will be ignored")
 
-	// reg := flag.Bool("reg", false, "Only register and save the infomation")
 	file := flag.String("file", "./reg.info", "Register infomation file")
 	//retained := flag.Bool("retained", false, "Are the messages sent with the retained flag")
 	flag.Parse()
 
 	wgExit.Add(1)
 	if *reg > 0 {
-		regFile, err := os.Create(*file)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer regFile.Close()
-		for i := 0; i < *reg; i++ {
-			wgReg.Add(1)
-			go doReg(i, regFile, appkey, topic, *qos, broker)
-			time.Sleep(10 * time.Millisecond)
-		}
-		wgReg.Wait()
-		// regFile.Sync()
+		register(file, *reg, appkey, topic, *qos, broker)
 	} else {
-		mode := 1
-		if *daemon {
-			*pubCnt = 0
-			mode = 3
-		}
-
-		if *msgLen < 8 {
-			*msgLen = 8
-		}
-		pubTimes = make([][]int64, *pubCnt)
-		for i := range pubTimes {
-			pubTimes[i] = make([]int64, *pubEach)
-		}
-		usedTimes = make([][]int64, *pubCnt)
-		for i := range usedTimes {
-			usedTimes[i] = make([]int64, *pubEach)
+		if *pubCnt > 0 && *subCnt > 0 {
+			initStat(*pubCnt, *pubEach)
+			if *msgLen < 8 {
+				*msgLen = 8
+			}
 		}
 
 		regFile, err := os.Open(*file)
@@ -257,40 +295,21 @@ func main() {
 		defer regFile.Close()
 		fileScanner := bufio.NewScanner(regFile)
 
+		// sub
 		wgSub.Add(1)
-		index := 0
-		for fileScanner.Scan() {
-			if index == *subCnt {
-				break
-			}
-			log.Printf("add sub[%d]: %s\n", index, fileScanner.Text())
-			regInfo := strings.Split(fileScanner.Text(), "|")
-			go doTest(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, mode)
-			time.Sleep(120 * time.Millisecond)
-			index++
+		mode := MODE_SUB
+		if *pubCnt <= 0 {
+			mode = MODE_SUB_ONLY
 		}
-		if index < *subCnt {
-			log.Printf("no enough reg info for sub\n")
-			return
-		}
+		addTest(fileScanner, *subCnt, broker, topic, *qos, *msgLen, *pubEach, *interval, mode)
 
-		mode = 2
-		index = 0
-		for fileScanner.Scan() {
-			if index >= *pubCnt {
-				break
-			}
-			log.Printf("add pub[%d]: %s\n", index, fileScanner.Text())
-			regInfo := strings.Split(fileScanner.Text(), "|")
-			wgPub.Add(1)
-			go doTest(index, &regInfo[0], &regInfo[1], &regInfo[2], broker, topic, *qos, *msgLen, *pubEach, *interval, mode)
-			time.Sleep(10 * time.Millisecond)
-			index++
+		// pub
+		wgPub.Add(1)
+		mode = MODE_PUB
+		if *subCnt <= 0 {
+			mode = MODE_PUB_ONLY
 		}
-		if index < *pubCnt {
-			log.Printf("no enough reg info for pub\n")
-			return
-		}
+		addTest(fileScanner, *pubCnt, broker, topic, *qos, *msgLen, *pubEach, *interval, mode)
 
 		stop := false
 		c := make(chan os.Signal, 1)
@@ -301,7 +320,7 @@ func main() {
 		}()
 
 		clientCnt := (*subCnt + *pubCnt)
-		// wait connecet
+		// wait connect
 		waitCnt := 10 + clientCnt / 100
 		log.Printf("wait connect %d seconds...\n", waitCnt)
 		for {
@@ -330,12 +349,12 @@ func main() {
 		msgTotal := pubTotal * *subCnt
 		// wait message
 		if *timeout == 0 {
-			waitCnt = 20 + pubTotal / 10
+			waitCnt = 10 + pubTotal / 10
 		} else {
 			waitCnt = *timeout
 		}
 
-		if *daemon || waitCnt == -1 {
+		if *pubCnt == 0 || waitCnt == -1 {
 			log.Printf("wait message forever...\n")
 		} else {
 			log.Printf("wait message %d seconds...\n", waitCnt)
@@ -346,13 +365,8 @@ func main() {
 				break
 			}
 			time.Sleep(1 * time.Second)
-			//if pubStarted {
-			//log.Printf("received: %d\n", msgRecv)
-			//} else {
-			//	continue
-			//}
 
-			if *daemon || waitCnt == -1 {
+			if *pubCnt == 0 || waitCnt == -1 {
 				continue
 			}
 			if msgRecv == msgTotal || waitCnt == 0 {
@@ -377,7 +391,7 @@ func main() {
 			log.Printf("\n")
 			log.Printf("no message received\n")
 			log.Printf("\n")
-		} else if *daemon {
+		} else if *pubCnt == 0 {
 			log.Printf("\n")
 			log.Printf("message receive: %d\n", msgRecv)
 			log.Printf("\n")
