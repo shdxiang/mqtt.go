@@ -166,6 +166,7 @@ func test(index int, clientid *string, user *string, pass *string, broker *strin
 	if mode == MODE_SUB {
 		// sub
 		client.StartSubscription(onMessageReceivedStat, onSuback, filter)
+		wgSub.Done()
 		wgUnsub.Add(1)
 
 		wgExit.Wait()
@@ -202,6 +203,7 @@ func test(index int, clientid *string, user *string, pass *string, broker *strin
 	} else if mode == MODE_SUB_ONLY {
 		// sub
 		client.StartSubscription(onMessageReceivedDemon, onSuback, filter)
+		wgSub.Done()
 		wgUnsub.Add(1)
 
 		wgExit.Wait()
@@ -209,7 +211,7 @@ func test(index int, clientid *string, user *string, pass *string, broker *strin
 		client.EndSubscription(*topic)
 		time.Sleep(2 * time.Second)
 		wgUnsub.Done()
-	} else if mode == MODE_SUB_ONLY {
+	} else if mode == MODE_PUB_ONLY {
 		// pub
 		msg := make([]byte, msgLen)
 		binary.LittleEndian.PutUint32(msg, uint32(index))
@@ -220,7 +222,6 @@ func test(index int, clientid *string, user *string, pass *string, broker *strin
 
 		for i := 0; i < pubEach; i++ {
 			binary.LittleEndian.PutUint32(msg[4:], uint32(i))
-			pubTimes[index][i] = time.Now().UnixNano()
 			<-client.Publish(MQTT.QoS(qos), *topic, msg)
 			log.Printf("published: index: %d:%d, topic: %s, len: %d, time: %d\n", index, i, *topic, msgLen, time.Now().UnixNano() / 1000000)
 			time.Sleep(time.Duration(interval) * time.Millisecond)
@@ -343,7 +344,6 @@ func main() {
 			}
 			waitCnt--
 		}
-		wgSub.Done()
 
 		pubTotal := *pubEach * *pubCnt
 		msgTotal := pubTotal * *subCnt
