@@ -21,12 +21,11 @@ import (
 	"os"
 	"strings"
 	"log"
-	MQTT "github.com/shdxiang/mqtt.go"
+	MQTT "github.com/shdxiang/yb-perf-go"
 	"flag"
 	"time"
 	"strconv"
 )
-
 
 var f MQTT.MessageHandler = func(client *MQTT.MqttClient, msg MQTT.Message) {
 	fmt.Printf("TOPIC: %s\n", msg.Topic())
@@ -41,12 +40,12 @@ func main() {
 	topic := flag.String("topic", hostname, "Topic to publish the messages on")
 	qos := flag.Int("qos", 0, "The QoS to send the messages at")
 	//retained := flag.Bool("retained", false, "Are the messages sent with the retained flag")
-	deviceId := flag.String("deviceId", hostname+strconv.Itoa(time.Now().Second()), "A deviceId for the connection")
+	deviceId := flag.String("deviceId", hostname + strconv.Itoa(time.Now().Second()), "A deviceId for the connection")
 	flag.Parse()
 
-    if *appkey == "" {
-        log.Fatal("please set your Yunba Portal's appkey")
-    }
+	if *appkey == "" {
+		log.Fatal("please set your Yunba Portal's appkey")
+	}
 
 	yunbaClient := &MQTT.YunbaClient{*appkey, *deviceId}
 	regInfo, err := yunbaClient.Reg()
@@ -65,21 +64,19 @@ func main() {
 	fmt.Println("DeviceId", regInfo.DeviceId)
 	fmt.Println("")
 
-//	urlInfo, err := yunbaClient.GetHost()
-//	if err != nil {
-//		log.Fatal(err)
-//	}
-//	if regInfo.ErrCode != 0 {
-//		log.Fatal("reg has error:", urlInfo.ErrCode)
-//	}
-//
-//
-//	fmt.Printf("URL:\t\t%+v\n", urlInfo)
-//	fmt.Println("url", urlInfo.Client)
-//	fmt.Println("")
+	urlInfo, err := yunbaClient.GetHost()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if regInfo.ErrCode != 0 {
+		log.Fatal("reg has error:", urlInfo.ErrCode)
+	}
 
-	broker := "tcp://123.56.125.40:1883"
+	fmt.Printf("URL:\t\t%+v\n", urlInfo)
+	fmt.Println("url", urlInfo.Client)
+	fmt.Println("")
 
+	broker := urlInfo.Client
 
 	connOpts := MQTT.NewClientOptions()
 	connOpts.AddBroker(broker)
