@@ -166,7 +166,7 @@ func test(index int, clientid *string, user *string, pass *string, broker *strin
 	if mode == MODE_SUB {
 		// sub
 		client.StartSubscription(onMessageReceivedStat, onSuback, filter)
-		wgSub.Done()
+		//wgSub.Done()
 		wgUnsub.Add(1)
 
 		wgExit.Wait()
@@ -203,7 +203,7 @@ func test(index int, clientid *string, user *string, pass *string, broker *strin
 	} else if mode == MODE_SUB_ONLY {
 		// sub
 		client.StartSubscription(onMessageReceivedDemon, onSuback, filter)
-		wgSub.Done()
+		//wgSub.Done()
 		wgUnsub.Add(1)
 
 		wgExit.Wait()
@@ -301,7 +301,7 @@ func main() {
 		if *pubCnt <= 0 {
 			mode = MODE_SUB_ONLY
 		}
-		wgSub.Add(*subCnt)
+		wgSub.Add(1)
 		addTest(fileScanner, *subCnt, broker, topic, *qos, *msgLen, *pubEach, *interval, mode)
 
 		// pub
@@ -344,6 +344,7 @@ func main() {
 			}
 			waitCnt--
 		}
+		wgSub.Done()
 
 		pubTotal := *pubEach * *pubCnt
 		msgTotal := pubTotal * *subCnt
