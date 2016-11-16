@@ -23,9 +23,9 @@ const (
 )
 
 var msgRecv int = 0
+var msgPub int = 0
 var wgReg sync.WaitGroup
 var wgSub sync.WaitGroup
-var wgPub sync.WaitGroup
 var wgUnsub sync.WaitGroup
 var wgExit sync.WaitGroup
 
@@ -172,7 +172,7 @@ func test(index int, clientid *string, user *string, pass *string, broker *strin
 		wgExit.Wait()
 		// unsub
 		client.EndSubscription(*topic)
-		time.Sleep(2 * time.Second)
+		//time.Sleep(2 * time.Second)
 		wgUnsub.Done()
 	} else if mode == MODE_PUB {
 		// pub
@@ -197,9 +197,9 @@ func test(index int, clientid *string, user *string, pass *string, broker *strin
 			pubTimes[index][i] = time.Now().UnixNano()
 			<-client.Publish(MQTT.QoS(qos), *topic, msg)
 			log.Printf("published: index: %d:%d, topic: %s, len: %d, time: %d\n", index, i, *topic, msgLen, time.Now().UnixNano() / 1000000)
+			msgPub++
 			time.Sleep(time.Duration(interval) * time.Millisecond)
 		}
-		wgPub.Done()
 	} else if mode == MODE_SUB_ONLY {
 		// sub
 		client.StartSubscription(onMessageReceivedDemon, onSuback, filter)
@@ -209,7 +209,7 @@ func test(index int, clientid *string, user *string, pass *string, broker *strin
 		wgExit.Wait()
 		// unsub
 		client.EndSubscription(*topic)
-		time.Sleep(2 * time.Second)
+		//time.Sleep(2 * time.Second)
 		wgUnsub.Done()
 	} else if mode == MODE_PUB_ONLY {
 		// pub
@@ -224,9 +224,9 @@ func test(index int, clientid *string, user *string, pass *string, broker *strin
 			binary.LittleEndian.PutUint32(msg[4:], uint32(i))
 			<-client.Publish(MQTT.QoS(qos), *topic, msg)
 			log.Printf("published: index: %d:%d, topic: %s, len: %d, time: %d\n", index, i, *topic, msgLen, time.Now().UnixNano() / 1000000)
+			msgPub++
 			time.Sleep(time.Duration(interval) * time.Millisecond)
 		}
-		wgPub.Done()
 	}
 }
 
@@ -309,7 +309,6 @@ func main() {
 		if *subCnt <= 0 {
 			mode = MODE_PUB_ONLY
 		}
-		wgPub.Add(*pubCnt)
 		addTest(fileScanner, *pubCnt, broker, topic, *qos, *msgLen, *pubEach, *interval, mode)
 
 		stop := false
@@ -350,7 +349,7 @@ func main() {
 		msgTotal := pubTotal * *subCnt
 		// wait message
 		if *timeout == 0 {
-			waitCnt = 10 + pubTotal / 10
+			waitCnt = 5 * (10 + pubTotal / 10)
 		} else {
 			waitCnt = *timeout
 		}
@@ -365,12 +364,12 @@ func main() {
 			if stop {
 				break
 			}
-			time.Sleep(1 * time.Second)
+			time.Sleep(200 * time.Millisecond)
 
 			if *pubCnt == 0 || waitCnt == -1 {
 				continue
 			}
-			if msgRecv == msgTotal || waitCnt == 0 {
+			if (msgRecv == msgTotal || waitCnt == 0) && (msgPub == pubTotal) {
 				break
 			}
 			waitCnt--
@@ -378,7 +377,6 @@ func main() {
 
 		log.Printf("prepare exiting...\n")
 		wgExit.Done()
-		wgPub.Wait()
 		wgUnsub.Wait()
 
 		log.Printf("\n")
