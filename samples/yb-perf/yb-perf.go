@@ -172,7 +172,7 @@ func test(index int, clientid *string, user *string, pass *string, broker *strin
 		wgExit.Wait()
 		// unsub
 		client.EndSubscription(*topic)
-		//time.Sleep(2 * time.Second)
+		time.Sleep(500 * time.Millisecond)
 		wgUnsub.Done()
 	} else if mode == MODE_PUB {
 		// pub
@@ -209,7 +209,7 @@ func test(index int, clientid *string, user *string, pass *string, broker *strin
 		wgExit.Wait()
 		// unsub
 		client.EndSubscription(*topic)
-		//time.Sleep(2 * time.Second)
+		time.Sleep(500 * time.Millisecond)
 		wgUnsub.Done()
 	} else if mode == MODE_PUB_ONLY {
 		// pub
