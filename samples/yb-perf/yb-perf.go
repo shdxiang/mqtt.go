@@ -55,7 +55,9 @@ func onSuback() {
 }
 
 func defaultPublishHandler(client *MQTT.MqttClient, message MQTT.Message) {
-	//log.Printf("defaultPublishHandler\n")
+	ns := time.Now().UnixNano()
+	data := message.Payload()
+	log.Printf("received: topic: %s, time: %d, len: %d, data: %s", message.Topic(), ns / 1000000, len(data), data)
 }
 
 func onMessageReceivedStat(client *MQTT.MqttClient, message MQTT.Message) {
@@ -91,7 +93,7 @@ func onMessageReceivedStat(client *MQTT.MqttClient, message MQTT.Message) {
 func onMessageReceivedDemon(client *MQTT.MqttClient, message MQTT.Message) {
 	ns := time.Now().UnixNano()
 	data := message.Payload()
-	log.Printf("received: index: %d, topic: %s, len: %d, time: %d", msgRecv, message.Topic(), len(data), ns / 1000000)
+	log.Printf("received: index: %d, topic: %s, len: %d, time: %d, payload: %s", msgRecv, message.Topic(), len(data), ns / 1000000, data)
 	msgRecv++
 }
 
@@ -364,7 +366,7 @@ func main() {
 			if stop {
 				break
 			}
-			time.Sleep(200 * time.Millisecond)
+			time.Sleep(2000 * time.Millisecond)
 
 			if *pubCnt == 0 || waitCnt == -1 {
 				continue
